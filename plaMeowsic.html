@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width,initial-scale=1" />
+  <title>Simple Music Player</title>
+  <style>
+    :root{--bg:#000;--card:#111;--accent:#fff;--muted:#777;--glass:rgba(255,255,255,0.08)}
+    *{box-sizing:border-box}
+    body{margin:0;min-height:100vh;display:flex;align-items:center;justify-content:center;background:#000;font-family:system-ui,-apple-system,"Segoe UI",Roboto,'Helvetica Neue',Arial;color:#fff}
+    .player{width:980px;max-width:96%;background:linear-gradient(180deg, rgba(255,255,255,0.02), rgba(255,255,255,0.01));border-radius:14px;padding:20px;display:grid;grid-template-columns:300px 1fr;gap:20px;box-shadow:0 6px 30px rgba(2,6,23,0.6)}
+    .cover{background:var(--card);border-radius:10px;padding:18px;display:flex;flex-direction:column;align-items:center;gap:14px}
+    .cover img{width:100%;height:220px;object-fit:cover;border-radius:8px;background:linear-gradient(45deg,#000,#111)}
+    .meta{width:100%;text-align:center}
+    .meta h2{margin:0;font-size:1.1rem}
+    .meta p{margin:4px 0 0;color:var(--muted);font-size:0.9rem}
+    .controls{display:flex;align-items:center;gap:8px;margin-top:6px}
+    .btn{background:var(--glass);border:1px solid rgba(255,255,255,0.03);padding:10px;border-radius:10px;cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+    .btn.large{padding:14px;border-radius:12px}
+    .btn svg{width:18px;height:18px}
+    .progress{width:100%;margin-top:12px}
+    .progress input[type=range]{width:100%}
+
+    .playlist{background:linear-gradient(180deg, rgba(255,255,255,0.01), rgba(255,255,255,0.02));border-radius:10px;padding:14px;max-height:540px;overflow:auto}
+    .topbar{display:flex;justify-content:space-between;align-items:center;margin-bottom:10px}
+    .topbar h3{margin:0}
+    .list{display:flex;flex-direction:column;gap:6px}
+    .track{display:flex;align-items:center;gap:10px;padding:8px;border-radius:8px;cursor:pointer}
+    .track:hover{background:rgba(255,255,255,0.02)}
+    .track.active{background:linear-gradient(90deg, rgba(255,255,255,0.12), rgba(255,255,255,0.06));box-shadow:inset 0 0 0 1px rgba(255,255,255,0.06)}
+    .track .title{flex:1}
+    .small{font-size:0.85rem;color:var(--muted)}
+
+    .footer-row{display:flex;gap:8px;align-items:center;margin-top:10px}
+    .file-input{display:flex;gap:8px;align-items:center}
+    input[type=file]{display:none}
+    label.upload{background:linear-gradient(90deg,#111,#222);padding:8px 12px;border-radius:8px;cursor:pointer;border:1px solid rgba(255,255,255,0.03)}
+
+    @media (max-width:760px){.player{grid-template-columns:1fr;}.cover img{height:180px}}
+  </style>
+</head>
+<body>
+  <main class="player" role="main">
+    <section class="cover" aria-label="Now playing">
+      <img id="cover" src="" alt="cover art" />
+      <div class="meta">
+        <h2 id="title">No track loaded</h2>
+        <p id="artist">—</p>
+      </div>
+
+      <div class="controls">
+        <button class="btn" id="prev" title="Previous"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M19 18V6l-12 6 12 6z"></path><path d="M5 6v12"/></svg></button>
+        <button class="btn large" id="play" title="Play / Pause"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" id="playIcon"><path d="M5 3v18l15-9z"></path></svg></button>
+        <button class="btn" id="next" title="Next"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor"><path d="M5 6v12l12-6-12-6z"></path><path d="M19 6v12"/></svg></button>
+        <div style="flex:1"></div>
+        <button class="btn" id="shuffle" title="Shuffle">🔀</button>
+        <button class="btn" id="repeat" title="Repeat">🔁</button>
+      </div>
+
+      <div class="progress">
+        <div style="display:flex;justify-content:space-between;font-size:0.85rem;color:var(--muted)"><span id="current">0:00</span><span id="duration">0:00</span></div>
+        <input type="range" id="seek" min="0" max="100" value="0">
+      </div>
+
+      <div class="footer-row">
+        <div class="file-input">
+          <label for="files" class="upload">Add local files</label>
+          <input id="files" type="file" accept="audio/*" multiple>
+          <button class="btn" id="clear">Clear</button>
+        </div>
+        <div style="flex:1"></div>
+        <div class="small">Tip: click a track to play • Space = Play/Pause</div>
+      </div>
+    </section>
+
+    <aside class="playlist" aria-label="Playlist">
+      <div class="topbar"><h3>Playlist</h3><div class="small" id="count">0 tracks</div></div>
+      <div class="list" id="list"></div>
+    </aside>
+
+  </main>
+
+  <audio id="audio"></audio>
+
+  <script>
+    const audio = document.getElementById('audio');
+    const playBtn = document.getElementById('play');
+    const prevBtn = document.getElementById('prev');
+    const nextBtn = document.getElementById('next');
+    const seek = document.getElementById('seek');
+    const currentTimeEl = document.getElementById('current');
+    const durationEl = document.getElementById('duration');
+    const listEl = document.getElementById('list');
+    const titleEl = document.getElementById('title');
+    const artistEl = document.getElementById('artist');
+    const coverEl = document.getElementById('cover');
+    const shuffleBtn = document.getElementById('shuffle');
+    const repeatBtn = document.getElementById('repeat');
+    const filesInput = document.getElementById('files');
+    const clearBtn = document.getElementById('clear');
+    const countEl = document.getElementById('count');
+
+    let tracks = [];
+    let current = -1;
+    let isPlaying = false;
+    let shuffle = false;
+    let repeat = false;
+
+    function getDefaultCover() {
+      return 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="400" height="400" viewBox="0 0 400 400"><rect width="100%" height="100%" fill="black"/><circle cx="200" cy="200" r="140" stroke="white" stroke-width="12" fill="none"/><path d="M240 160v120a40 40 0 1 1-20-35v-95l60-15v30l-40 10z" fill="white"/></svg>';
+    }
+
+    // Initial default cover
+    coverEl.src = getDefaultCover();
+
+    function formatTime(s){
+      if (isNaN(s)) return '0:00';
+      const m = Math.floor(s/60); const sec = Math.floor(s%60).toString().padStart(2,'0');
+      return `${m}:${sec}`;
+    }
+
+    function loadTrack(index){
+      if (index < 0 || index >= tracks.length) return;
+      current = index;
+      const t = tracks[index];
+      audio.src = t.url || t.src;
+      titleEl.textContent = t.name || 'Unknown title';
+      artistEl.textContent = t.artist || 'Unknown artist';
+      coverEl.src = t.cover || getDefaultCover();
+      updateActiveList();
+      audio.load();
+    }
+
+    function playTrack(){
+      if (!audio.src){
+        if (tracks.length) loadTrack(0); else return;
+      }
+      audio.play();
+      isPlaying = true; updatePlayIcon();
+    }
+
+    function pauseTrack(){ audio.pause(); isPlaying=false; updatePlayIcon(); }
+    function updatePlayIcon(){
+      const svg = document.getElementById('playIcon');
+      if (!svg) return;
+      svg.innerHTML = isPlaying ? '<path d="M6 19h4V5H6v14zM14 5v14h4V5h-4z"></path>' : '<path d="M5 3v18l15-9z"></path>';
+    }
+
+    function prevTrack(){
+      if (tracks.length === 0) return;
+      if (audio.currentTime > 3) { audio.currentTime = 0; return; }
+      if (shuffle) return playRandom();
+      const nextIndex = (current - 1 + tracks.length) % tracks.length;
+      loadTrack(nextIndex); playTrack();
+    }
+
+    function nextTrack(){
+      if (tracks.length === 0) return;
+      if (shuffle) return playRandom();
+      const nextIndex = (current + 1) % tracks.length;
+      if (nextIndex === 0 && !repeat && current === tracks.length - 1) { pauseTrack(); audio.currentTime = 0; return; }
+      loadTrack(nextIndex); playTrack();
+    }
+
+    function playRandom(){
+      if (!tracks.length) return;
+      let idx = Math.floor(Math.random()*tracks.length);
+      if (tracks.length>1 && idx===current) idx = (idx+1)%tracks.length;
+      loadTrack(idx); playTrack();
+    }
+
+    function updateActiveList(){
+      Array.from(listEl.children).forEach((c,i)=>{
+        c.classList.toggle('active', i===current);
+      });
+      countEl.textContent = tracks.length + ' tracks';
+    }
+
+    playBtn.addEventListener('click', ()=> isPlaying ? pauseTrack() : playTrack());
+    prevBtn.addEventListener('click', prevTrack);
+    nextBtn.addEventListener('click', nextTrack);
+
+    audio.addEventListener('timeupdate', ()=>{
+      const cur = audio.currentTime; const dur = audio.duration;
+      currentTimeEl.textContent = formatTime(cur);
+      durationEl.textContent = formatTime(dur);
+      if (!isNaN(dur)) seek.max = Math.floor(dur);
+      seek.value = Math.floor(cur);
+    });
+
+    seek.addEventListener('input', ()=>{ audio.currentTime = seek.value; });
+    audio.addEventListener('ended', ()=>{ if (repeat) { audio.currentTime=0;playTrack(); } else nextTrack(); });
+
+    window.addEventListener('keydown', (e)=>{
+      if (e.code === 'Space' && document.activeElement.tagName !== 'INPUT') { e.preventDefault(); isPlaying ? pauseTrack() : playTrack(); }
+      if (e.code === 'ArrowRight') audio.currentTime = Math.min(audio.currentTime + 5, audio.duration || Infinity);
+      if (e.code === 'ArrowLeft') audio.currentTime = Math.max(audio.currentTime - 5, 0);
+    });
+
+    shuffleBtn.addEventListener('click', ()=>{ shuffle = !shuffle; shuffleBtn.style.opacity = shuffle ? '1' : '0.7'; });
+    repeatBtn.addEventListener('click', ()=>{ repeat = !repeat; repeatBtn.style.opacity = repeat ? '1' : '0.7'; });
+
+    filesInput.addEventListener('change', (ev)=>{
+      const files = Array.from(ev.target.files);
+      files.forEach(f=>{
+        const url = URL.createObjectURL(f);
+        tracks.push({src:f.name, name: f.name.replace(/\.[^/.]+$/,'') , artist: '', url});
+      });
+      renderList();
+      if (current === -1 && tracks.length) loadTrack(0);
+    });
+
+    clearBtn.addEventListener('click', ()=>{
+      tracks = []; current = -1; audio.pause(); audio.src=''; renderList(); titleEl.textContent='No track loaded'; artistEl.textContent='—'; coverEl.src=getDefaultCover(); updatePlayIcon();
+    });
+
+    function renderList(){
+      listEl.innerHTML = '';
+      tracks.forEach((t,i)=>{
+        const el = document.createElement('div'); el.className='track';
+        el.innerHTML = `<div class="title">${escapeHtml(t.name)}</div><div class="small">${escapeHtml(t.artist||'Local file')}</div>`;
+        el.addEventListener('click', ()=>{ loadTrack(i); playTrack(); });
+        listEl.appendChild(el);
+      });
+      updateActiveList();
+    }
+
+    function escapeHtml(s){ return s.replaceAll('&','&amp;').replaceAll('<','&lt;').replaceAll('>','&gt;'); }
+
+    ['dragenter','dragover'].forEach(ev=>{ document.addEventListener(ev, (e)=>{ e.preventDefault(); e.dataTransfer.dropEffect='copy'; }); });
+    document.addEventListener('drop', (e)=>{
+      e.preventDefault(); const items = Array.from(e.dataTransfer.files || []);
+      items.filter(f=>f.type.startsWith('audio/')).forEach(f=>{
+        const url = URL.createObjectURL(f);
+        tracks.push({src:f.name, name:f.name.replace(/\.[^/.]+$/,''), artist:'', url});
+      });
+      renderList(); if (current===-1 && tracks.length) loadTrack(0);
+    });
+  </script>
+</body>
+</html>
